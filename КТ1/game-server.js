@@ -42,4 +42,7 @@ net.createServer(connection => {
         }
     })
 
+    connection.on('close', () => {
+        console.log('Клиент отвалился')
+    })
 }).listen(3000)
