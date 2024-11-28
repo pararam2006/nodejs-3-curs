@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Простой чат на веб-сокетах</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            width: 800px;
+            padding: 20px;
+            border-radius: 10px;
+            background-color: white;
+            display: grid;
+            grid-template-columns: 500px 250px;
+            gap: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        input[type="text"] {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            outline: none;
+        }
+        button {
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+            margin-top: 20px;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        .system-message {
+            color: gray;
+        }
+        .online-list {
+            border: 1px solid #ddd;
+            padding: 10px;
+            max-height: 450px;
+            overflow-y: auto;
+        }
+        .color-picker {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 1px solid #000;
+            cursor: pointer;
+        }
+        .red { background-color: red; }
+        .green { background-color: green; }
+        .blue { background-color: blue; }
+        .yellow { background-color: yellow; }
+        .purple { background-color: purple; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div>
+        <h1>Простой чат на веб-сокетах</h1>
+        <form id="usernameForm">
+            <label for="usernameInput">Ваше имя:</label>
+            <input type="text" id="usernameInput" placeholder="Ваше имя..." required>
+            <br><br>
+            <label for="colorPicker">Цвет сообщений:</label>
+            <span class="color-picker red" onclick="selectColor(this)" title="Красный"></span>
+            <span class="color-picker green" onclick="selectColor(this)" title="Зелёный"></span>
+            <span class="color-picker blue" onclick="selectColor(this)" title="Синий"></span>
+            <span class="color-picker yellow" onclick="selectColor(this)" title="Жёлтый"></span>
+            <span class="color-picker purple" onclick="selectColor(this)" title="Фиолетовый"></span>
+            <br><br>
+            <button type="submit">Присоединиться</button>
+        </form>
+        <ul id="messages"></ul>
+        <form id="messageForm" style="display: none;">
+            <input type="text" id="messageInput" placeholder="Введите ваше сообщение..." required>
+            <button type="submit">Отправить</button>
+        </form>
+    </div>
+    <div>
+        <h2>Онлайн участники</h2>
+        <ul class="online-list" id="onlineList"></ul>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+    const messagesList = document.getElementById('messages');
+    const onlineList = document.getElementById('onlineList');
+    const usernameForm = document.getElementById('usernameForm');
+    const messageForm = document.getElementById('messageForm');
+    const usernameInput = document.getElementById('usernameInput');
+    const messageInput = document.getElementById('messageInput');
+    let selectedColor = 'black'; // По умолчанию черный цвет
+
+    function selectColor(element) {
+        selectedColor = element.className.split(' ')[1];
+        Array.from(document.querySelectorAll('.color-picker')).forEach(picker => picker.style.borderColor = '#000');
+        element.style.borderColor = 'red';
+    }
+
+    function addSystemMessage(message) {
+        const li = document.createElement('li');
+        li.className = 'system-message';
+        li.textContent = message;
+        messagesList.appendChild(li);
+    }
+
+    function addMessage(user, message, color) {
+        const li = document.createElement('li');
+        li.innerHTML = `<strong style="color: ${color};">${user}:</strong> ${message}`;
+        messagesList.appendChild(li);
+        messagesList.scrollTop = messagesList.scrollHeight;
+    }
+
+    function updateOnlineList(users) {
+        onlineList.innerHTML = '';
+        users.forEach(user => {
+            const li = document.createElement('li');
+            li.textContent = `${user.name} (${user.color})`;
+            onlineList.appendChild(li);
+        });
+    }
+
+    // Присоединение нового пользователя
+    usernameForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const username = usernameInput.value.trim();
+        if (username) {
+            socket.emit('registerName', { name: username, color: selectedColor });
+            usernameForm.style.display = 'none';
+            messageForm.style.display = 'block';
+        }
+    });
+
+    // Отправка сообщения
+    messageForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const message = messageInput.value.trim();
+        if (message) {
+            socket.emit('sendMessage', { user: usernameInput.value, message, color: selectedColor });
+            messageInput.value = '';
+        }
+    });
+
+    // Обработчик событий от сервера
+    socket.on('welcome', (data) => {
+        addSystemMessage(data.message);
+    });
+
+    socket.on('newUserJoined', (data) => {
+        addSystemMessage(`${data.user} присоединился.`);
+    });
+
+    socket.on('receiveMessage', (data) => {
+        addMessage(data.user, data.message, data.color);
+    });
+
+    socket.on('registered', (data) => {
+        addSystemMessage(data.message);
+    });
+
+    socket.on('userRegistered', (data) => {
+        addSystemMessage(`${data.user} зарегистрирован.`);
+    });
+
+    socket.on('userLeft', (data) => {
+        addSystemMessage(`${data.user} покинул чат.`);
+    });
+
+    socket.on('error', (data) => {
+        addSystemMessage(data.message);
+    });
+
+    socket.on('currentUsers', (data) => {
+        if (data.users.length > 0) {
+            addSystemMessage(`Добро пожаловать. В чате уже присутствуют: ${data.users.map(u => u.name).join(', ')}.`);
+        } else {
+            addSystemMessage('Вы первый в чате.');
+        }
+        updateOnlineList(data.users);
+    });
+
+    socket.on('updateOnlineList', (data) => {
+        updateOnlineList(data.users);
+    });
+</script>
+</body>
+</html>
